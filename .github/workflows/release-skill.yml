@@ -2,13 +2,15 @@ name: Release skill
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "SKILL.md"
-      - "references/**"
-      - "scripts/**"
-      - ".github/workflows/release-skill.yml"
+    tags:
+      - "v*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag to publish, e.g. v1.0.1. Leave empty to build only."
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
@@ -24,6 +26,39 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve version
+        id: ver
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -eu
+          tag=""
+          target=""
+          publish="false"
+          if [ "$REF_TYPE" = "tag" ]; then
+            case "$REF_NAME" in
+              v*) tag="$REF_NAME"; publish="true" ;;
+              *) echo "::error::pushed tag must start with 'v', got '$REF_NAME'"; exit 1 ;;
+            esac
+          fi
+          if [ -n "${INPUT_VERSION:-}" ]; then
+            case "$INPUT_VERSION" in
+              v*) ;;
+              *) echo "::error::version input must start with 'v', e.g. v1.0.1"; exit 1 ;;
+            esac
+            tag="$INPUT_VERSION"
+            target="main"
+            publish="true"
+          fi
+          {
+            echo "tag=$tag"
+            echo "target=$target"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          echo "resolved: tag='$tag' target='$target' publish='$publish'"
+
       - name: Build .skill archive
         run: |
           set -eu
@@ -35,19 +70,28 @@ jobs:
           echo "--- archive contents ---"
           unzip -l "rikkahub-harmonyos-container.skill"
 
-      - name: Publish release asset
+      - name: Publish release
+        if: steps.ver.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          TARGET: ${{ steps.ver.outputs.target }}
         run: |
           set -eu
-          tag="v1.0.0"
           asset="dist/rikkahub-harmonyos-container.skill"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" "$asset" --clobber
+          title="rikkahub-harmonyos-container $TAG"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$asset" --clobber
+            gh release edit "$TAG" --notes-file RELEASE_NOTES.md
+          elif [ -n "$TARGET" ]; then
+            gh release create "$TAG" "$asset" --target "$TARGET" --title "$title" --notes-file RELEASE_NOTES.md
           else
-            gh release create "$tag" "$asset" \
-              --target "$GITHUB_SHA" \
-              --title "rikkahub-harmonyos-container v1.0.0" \
-              --notes-file RELEASE_NOTES.md
+            gh release create "$TAG" "$asset" --verify-tag --title "$title" --notes-file RELEASE_NOTES.md
           fi
-          gh release view "$tag" --json tagName,assets
+          gh release view "$TAG" --json tagName,isLatest,url,assets
+
+      - name: Build-only notice
+        if: steps.ver.outputs.publish != 'true'
+        run: |
+          echo "Build only: no version supplied, so nothing was published." >> "$GITHUB_STEP_SUMMARY"
+          echo "Push a v* tag or pass a version input to cut a release." >> "$GITHUB_STEP_SUMMARY"

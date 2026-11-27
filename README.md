@@ -14,7 +14,7 @@ The skill turns those failures into a fixed procedure instead of guesswork: a he
 
 ## Install
 
-Download the latest `.skill` from the [Releases](https://github.com/zeroxiyuan/rikkahub-harmonyos-container/releases) page, or use the repository directly.
+Download a `.skill` from the [Releases](https://github.com/zeroxiyuan/rikkahub-harmonyos-container/releases) page, or use the repository directly.
 
 **In the RikkaHub workspace** — unpack the archive so the folder sits under `/skills`:
 
@@ -41,6 +41,15 @@ scripts/pget.pl                 single-threaded HTTP downloader for the broken c
 
 ## Release
 
-`.github/workflows/release-skill.yml` runs only when a push to `main` changes something the archive is built from — `SKILL.md`, `references/**`, `scripts/**` — or the workflow file itself. Changes to this README or `RELEASE_NOTES.md` alone do not start a new run; the workflow can also be started by hand from the Actions tab.
+Releases are cut from tags, never from pushes to `main`. The release version is the tag itself, so no version number is hardcoded in the workflow:
 
-When it runs, it zips `SKILL.md` + `references/` + `scripts/` into `rikkahub-harmonyos-container.skill` (archive root: `rikkahub-harmonyos-container/`) and uploads that file to the `v1.0.0` release with `--clobber`, so the previous asset is replaced rather than duplicated.
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+`.github/workflows/release-skill.yml` then builds `rikkahub-harmonyos-container.skill` from `SKILL.md` + `references/` + `scripts/` (archive root `rikkahub-harmonyos-container/`) and attaches it to the release for that tag, with `RELEASE_NOTES.md` as the release body.
+
+If a release for that tag already exists, the run replaces the asset with `--clobber` and re-syncs the body instead of failing, so re-pushing or re-running is safe.
+
+Pushing to `main` publishes nothing — that is the point of the tag trigger. To publish without pushing a local tag, open the Actions tab and run the workflow by hand: the `version` input (`v1.0.1`) creates or updates that release from `main`, and leaving the input empty builds the archive without publishing anything.

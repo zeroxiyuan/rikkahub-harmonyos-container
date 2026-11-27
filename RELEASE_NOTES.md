@@ -1,9 +1,12 @@
-# Release v1.0.0
+# rikkahub-harmonyos-container
 
 Skill package for the RikkaHub agent workspace on HarmonyOS (Ubuntu arm64 proot container).
 
 **Asset:** `rikkahub-harmonyos-container.skill` — a zip archive whose root folder is
 `rikkahub-harmonyos-container/`.
+
+The release version is the tag it was built from. This body is reused for every release: edit
+it here to change future releases, or edit the release page itself for a one-off note.
 
 ## Contents
 
