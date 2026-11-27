@@ -41,4 +41,6 @@ scripts/pget.pl                 single-threaded HTTP downloader for the broken c
 
 ## Release
 
-Every push to `main` that touches the skill files re-runs `.github/workflows/release-skill.yml`, which zips the skill folder into `rikkahub-harmonyos-container.skill` and attaches it to the `v1.0.0` release.
+`.github/workflows/release-skill.yml` runs only when a push to `main` changes something the archive is built from — `SKILL.md`, `references/**`, `scripts/**` — or the workflow file itself. Changes to this README or `RELEASE_NOTES.md` alone do not start a new run; the workflow can also be started by hand from the Actions tab.
+
+When it runs, it zips `SKILL.md` + `references/` + `scripts/` into `rikkahub-harmonyos-container.skill` (archive root: `rikkahub-harmonyos-container/`) and uploads that file to the `v1.0.0` release with `--clobber`, so the previous asset is replaced rather than duplicated.

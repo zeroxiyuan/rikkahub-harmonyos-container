@@ -3,10 +3,19 @@ name: Release skill
 on:
   push:
     branches: [main]
+    paths:
+      - "SKILL.md"
+      - "references/**"
+      - "scripts/**"
+      - ".github/workflows/release-skill.yml"
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-skill
+  cancel-in-progress: false
 
 jobs:
   package:
