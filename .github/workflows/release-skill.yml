@@ -2,6 +2,8 @@ name: Release skill
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
   workflow_dispatch:
@@ -25,39 +27,83 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Resolve version
         id: ver
         env:
+          EVENT_NAME: ${{ github.event_name }}
           INPUT_VERSION: ${{ inputs.version }}
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -eu
           tag=""
           target=""
           publish="false"
-          if [ "$REF_TYPE" = "tag" ]; then
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            # Manual trigger: optional version input. Empty => build only.
+            if [ -n "${INPUT_VERSION:-}" ]; then
+              case "$INPUT_VERSION" in
+                v*) ;;
+                *) echo "::error::version input '$INPUT_VERSION' must start with 'v', e.g. v1.0.1"; exit 1 ;;
+              esac
+              tag="$INPUT_VERSION"
+              target="main"
+              publish="true"
+            fi
+          elif [ "$REF_TYPE" = "tag" ]; then
+            # Tag push: the tag name is the version.
             case "$REF_NAME" in
               v*) tag="$REF_NAME"; publish="true" ;;
-              *) echo "::error::pushed tag must start with 'v', got '$REF_NAME'"; exit 1 ;;
+              *) echo "::error::pushed tag '$REF_NAME' must start with 'v'"; exit 1 ;;
             esac
-          fi
-          if [ -n "${INPUT_VERSION:-}" ]; then
-            case "$INPUT_VERSION" in
+          elif [ "$REF_TYPE" = "branch" ] && [ "$REF_NAME" = "main" ]; then
+            # Main push: version comes from the .release-version file.
+            if [ ! -f .release-version ]; then
+              echo "::error::.release-version is missing on main; expected a version starting with 'v', e.g. v1.0.1"
+              exit 1
+            fi
+            ver="$(tr -d '[:space:]' < .release-version)"
+            case "$ver" in
               v*) ;;
-              *) echo "::error::version input must start with 'v', e.g. v1.0.1"; exit 1 ;;
+              "")
+                echo "::error::.release-version is empty; expected a version starting with 'v', e.g. v1.0.1"
+                exit 1
+                ;;
+              *)
+                echo "::error::.release-version '$ver' does not start with 'v'; expected e.g. v1.0.1"
+                exit 1
+                ;;
             esac
-            tag="$INPUT_VERSION"
-            target="main"
-            publish="true"
+            # Publish only when .release-version actually changed in this push.
+            changed="true"
+            if [ -n "${BEFORE_SHA:-}" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+              if ! git cat-file -e "$BEFORE_SHA" 2>/dev/null; then
+                git fetch --depth=1 origin "$BEFORE_SHA" || true
+              fi
+              if git cat-file -e "$BEFORE_SHA" 2>/dev/null; then
+                if git diff --quiet "$BEFORE_SHA" HEAD -- .release-version; then
+                  changed="false"
+                fi
+              fi
+            fi
+            if [ "$changed" = "true" ]; then
+              tag="$ver"
+              target="main"
+              publish="true"
+            fi
           fi
+
           {
             echo "tag=$tag"
             echo "target=$target"
             echo "publish=$publish"
           } >> "$GITHUB_OUTPUT"
-          echo "resolved: tag='$tag' target='$target' publish='$publish'"
+          echo "resolved: event='$EVENT_NAME' ref='$REF_NAME' tag='$tag' target='$target' publish='$publish'"
 
       - name: Build .skill archive
         run: |
@@ -81,6 +127,7 @@ jobs:
           asset="dist/rikkahub-harmonyos-container.skill"
           title="rikkahub-harmonyos-container $TAG"
           if gh release view "$TAG" >/dev/null 2>&1; then
+            # Idempotent: replace the asset and re-sync the body, do not duplicate.
             gh release upload "$TAG" "$asset" --clobber
             gh release edit "$TAG" --notes-file RELEASE_NOTES.md
           elif [ -n "$TARGET" ]; then
@@ -92,6 +139,15 @@ jobs:
 
       - name: Build-only notice
         if: steps.ver.outputs.publish != 'true'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          echo "Build only: no version supplied, so nothing was published." >> "$GITHUB_STEP_SUMMARY"
-          echo "Push a v* tag or pass a version input to cut a release." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Build only"
+            echo "- Event: $EVENT_NAME"
+            echo "- Ref: $REF_NAME"
+            echo "- No publishable version was resolved, so the archive was built but nothing was published."
+            echo "- Archive: dist/rikkahub-harmonyos-container.skill"
+            echo "- Entry points: push a v* tag, update .release-version on main, or run this workflow manually with a version input."
+          } >> "$GITHUB_STEP_SUMMARY"

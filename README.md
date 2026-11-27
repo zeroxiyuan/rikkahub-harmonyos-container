@@ -41,15 +41,21 @@ scripts/pget.pl                 single-threaded HTTP downloader for the broken c
 
 ## Release
 
-Releases are cut from tags, never from pushes to `main`. The release version is the tag itself, so no version number is hardcoded in the workflow:
+Releases are cut automatically by `.github/workflows/release-skill.yml`. The version is never hardcoded in the workflow; it comes from whichever entry point fired. There are three entry points:
 
-```bash
-git tag v1.0.1
-git push origin v1.0.1
-```
+1. **Tag push** — push a tag named `v*` (for example `v1.0.1`). The tag name is the release version, and the release is created against that tag.
 
-`.github/workflows/release-skill.yml` then builds `rikkahub-harmonyos-container.skill` from `SKILL.md` + `references/` + `scripts/` (archive root `rikkahub-harmonyos-container/`) and attaches it to the release for that tag, with `RELEASE_NOTES.md` as the release body.
+   ```bash
+   git tag v1.0.1
+   git push origin v1.0.1
+   ```
 
-If a release for that tag already exists, the run replaces the asset with `--clobber` and re-syncs the body instead of failing, so re-pushing or re-running is safe.
+2. **Main push updating `.release-version`** — the file `.release-version` on `main` holds the version (for example `v1.0.1`). A push to `main` that changes this file publishes a release for that version, created at `main`. Pushes to `main` that do not change `.release-version` build only.
 
-Pushing to `main` publishes nothing — that is the point of the tag trigger. To publish without pushing a local tag, open the Actions tab and run the workflow by hand: the `version` input (`v1.0.1`) creates or updates that release from `main`, and leaving the input empty builds the archive without publishing anything.
+3. **Manual dispatch** — open the Actions tab and run the workflow by hand. Filling the `version` input (`v1.0.1`) creates or updates that release from `main`; leaving the input empty builds the archive without publishing anything, and the build details are written to the job summary.
+
+The workflow builds `rikkahub-harmonyos-container.skill` from `SKILL.md` + `references/` + `scripts/` (archive root `rikkahub-harmonyos-container/`) and attaches it to the release, with `RELEASE_NOTES.md` as the release body.
+
+If a release for that version already exists, the run replaces the asset with `--clobber` and re-syncs the body from `RELEASE_NOTES.md` instead of failing, so re-pushing or re-running is safe.
+
+The version in `.release-version` (or the manual `version` input) must start with `v`; otherwise the run fails explicitly with an error instead of publishing anything.
