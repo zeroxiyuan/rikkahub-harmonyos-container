@@ -1,0 +1,44 @@
+name: Release skill
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build .skill archive
+        run: |
+          set -eu
+          stage="dist/rikkahub-harmonyos-container"
+          mkdir -p "$stage"
+          cp -r SKILL.md references scripts "$stage/"
+          cd dist
+          zip -rq "rikkahub-harmonyos-container.skill" "rikkahub-harmonyos-container"
+          echo "--- archive contents ---"
+          unzip -l "rikkahub-harmonyos-container.skill"
+
+      - name: Publish release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          tag="v1.0.0"
+          asset="dist/rikkahub-harmonyos-container.skill"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$asset" --clobber
+          else
+            gh release create "$tag" "$asset" \
+              --target "$GITHUB_SHA" \
+              --title "rikkahub-harmonyos-container v1.0.0" \
+              --notes-file RELEASE_NOTES.md
+          fi
+          gh release view "$tag" --json tagName,assets
